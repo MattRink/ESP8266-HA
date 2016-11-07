@@ -1,9 +1,13 @@
+
+-- This file was originally based upon the below but it has been modified considerably since...
 -- Title   : DHT11 Webserver
 -- Author  : Claus Kuehnel
 -- Date    : 2015-06-06
 -- Id      : dht11_webserver.lua
 -- Firmware: nodemcu_float_0.9.6-dev_20150406
 -- Copyright © 2015 Claus Kuehnel info[at]ckuehnel.ch
+
+-- TODO: Query string support, return JSON format results
 
 PIN = 4 -- data pin of DHT11
 LED = 8 -- D8
