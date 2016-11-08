@@ -1,23 +1,21 @@
 
--- This file was originally based upon the below but it has been modified considerably since...
--- Title   : DHT11 Webserver
--- Author  : Claus Kuehnel
--- Date    : 2015-06-06
--- Id      : dht11_webserver.lua
--- Firmware: nodemcu_float_0.9.6-dev_20150406
--- Copyright © 2015 Claus Kuehnel info[at]ckuehnel.ch
+-- TODO: Return JSON format results
 
--- TODO: Query string support, return JSON format results
-
-PIN = 4 -- data pin of DHT11
+DHT_PIN = 4 -- data pin of DHT11
 LED = 8 -- D8
+APS = {}
 
 gpio.mode(LED, gpio.OUTPUT)
+
+function updateAPs()
+  print("Getting list of APs")
+  wifi.sta.getap(APS)
+end
 
 function readDHT()
   DHT = require("dht")
   local result = 0
-  status, temp, humi, temp_dec, humi_dec = dht.read(PIN)
+  local status, temp, humi, temp_dec, humi_dec = dht.read(DHT_PIN)
   if status == dht.OK then
     gpio.write(LED, gpio.LOW)
     result = 1
@@ -35,15 +33,15 @@ function readDHT()
   gpio.write(LED, gpio.HIGH)
   DHT = nil
 
-  return result
+  return result, temp, humi
 end
 
--- LUA Webserver --
-srv = net.createServer(net.TCP)
+srv = net.createServer(net.TCP, 60)
 srv:listen(80, function(conn)
-  conn:on("receive",function(sck, req)
+  conn:on("receive", function(sck, req)
     local response = {}
     local status_code = ""
+    print(node.heap())
     local _, _, method, path, vars = string.find(req, "([A-Z]+) (.+)?(.+) HTTP")
     if method == nil then
       _, _, method, path = string.find(req, "([A-Z]+) (.+) HTTP")
@@ -67,21 +65,40 @@ srv:listen(80, function(conn)
     end
 
     reply_template = string.gsub(reply_template, "%[!TITLE!%]", "ESP8266-HA")
-    reply_template = string.gsub(reply_template, "%[!HEADER!%]", "ESP8266-HA")
 
     local reply_content = ""
 
     if method == "GET"and path == "/" then
       status_code = "200 OK"
-      if readDHT() == 1 then -- Only return if the DHT is available
-        reply_content = "<p>Temperature: "..temp.." deg C<br />Humidity: "..humi.."%%</p>"
+      local dht_content = ""
+      local config_content = ""
+      local result, temp, humi = readDHT()
+      if result == 1 then -- Only return if the DHT is available
+        if file.open("dht.inc") then
+          dht_content = file.read()
+          file.close()
+        end
+        dht_content = string.gsub(dht_content, "%[!TEMP!%]", tostring(temp))
+        dht_content = string.gsub(dht_content, "%[!HUMI!%]", tostring(humi))
+        reply_content = reply_content..dht_content
       end
+    elseif method == "GET" and path == "/config" then
+      local wifi_rows = ""
+      if file.open("config.inc") then
+        config_content = file.read()
+        file.close()
+      end
+      for bssid,v in pairs(t) do
+        local ssid, rssi, authmode, channel = string.match(v, "([^,]+),([^,]+),([^,]+),([^,]*)")
+        wifi_rows = wifi_rows.."<tr><td>"..string.format("%32s",ssid).."</td><td>"..bssid.."</td><td>"..rssi.."</td><td>"..authmode.."</td><td>"..channel.."</td></tr>"
+      end
+      config_content = string.gsub(config_content, "%[!APS!%]", wifi_rows)
     else
       status_code = "404 Not Found"
       reply_content = "<p>Page not found</p>"
     end
 
-    reply_template = string.gsub(reply_template, "%[!CONTENT!%]", reply_content)
+    reply_template = string.gsub(reply_template, "%[!INCLUDE!%]", reply_content)
 
     payload_len = string.len(reply_template)
     print("Response length:"..tostring(payload_len))
@@ -105,3 +122,6 @@ srv:listen(80, function(conn)
   end)
   
 end)
+
+tmr.alarm(0, 60000, tmr.ALARM_AUTO, function() updateAPs() end)
+updateAPs()

@@ -12,22 +12,20 @@ function startup()
     end
 end
 
---init.lua
 wifi.sta.disconnect()
--- vdd = adc.readvdd33()
--- print("Vdd = "..vdd.." mV")
-print("set up wifi mode")
+
+print("Set up wifi mode")
 wifi.setmode(wifi.STATION)
 wifi.sta.config(SSID,PASSWORD,0)
 wifi.sta.connect()
 tmr.alarm(1, 1000, 1, function() 
     if wifi.sta.getip()== nil then 
-        print("IP unavaiable, Waiting...") 
+        print("IP unavailable, Waiting...") 
     else 
         tmr.stop(1)
         print("Config done, IP is "..wifi.sta.getip())
-        print("You have 5 seconds to abort Startup")
+        print("You have 5 seconds to abort startup")
         print("Waiting...")
-        tmr.alarm(0,5000,0,startup)
+        tmr.alarm(0, 5000, 0, startup)
     end 
  end)
