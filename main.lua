@@ -34,6 +34,8 @@ function readDHT()
   end
   gpio.write(LED, gpio.HIGH)
   DHT = nil
+
+  return result
 end
 
 -- LUA Webserver --
@@ -71,7 +73,7 @@ srv:listen(80, function(conn)
 
     if method == "GET"and path == "/" then
       status_code = "200 OK"
-      if readDHT() == 1 -- Only return if the DHT is available
+      if readDHT() == 1 then -- Only return if the DHT is available
         reply_content = "<p>Temperature: "..temp.." deg C<br />Humidity: "..humi.."%%</p>"
       end
     else
