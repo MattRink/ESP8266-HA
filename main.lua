@@ -16,20 +16,23 @@ gpio.mode(LED, gpio.OUTPUT)
 
 function readDHT()
   DHT = require("dht")
+  local result = 0
   status, temp, humi, temp_dec, humi_dec = dht.read(PIN)
   if status == dht.OK then
-    gpio.write(LED,gpio.LOW)
-    error = 0
+    gpio.write(LED, gpio.LOW)
+    result = 1
     print("Temperature: "..temp.." deg C\tHumidity: "..humi.."%")
   elseif status == dht.ERROR_CHECKSUM then
     print( "DHT Checksum error." )
+    result = -1
   elseif status == dht.ERROR_TIMEOUT then
     print( "DHT timed out." )
+    result = -2
   else
-    error = 1
     print("Error reading from DHT")
+    result = -3
   end
-  gpio.write(LED,gpio.HIGH)
+  gpio.write(LED, gpio.HIGH)
   DHT = nil
 end
 
@@ -39,8 +42,19 @@ srv:listen(80, function(conn)
   conn:on("receive",function(sck, req)
     local response = {}
     local status_code = ""
+    local _, _, method, path, vars = string.find(req, "([A-Z]+) (.+)?(.+) HTTP")
+    if method == nil then
+      _, _, method, path = string.find(req, "([A-Z]+) (.+) HTTP")
+    end
 
-    print("\nGot query...")
+    local _GET = {}
+    if vars ~= nil then
+      for k, v in string.gmatch(vars, "(%w+)=(%w+)&*") do
+        _GET[k] = v
+      end
+    end
+
+    print("\nMethod:"..method..";path:"..path..";vars:"..(vars or ""))
     print("Heap = "..node.heap().." Bytes")
     print("Time since start = "..tmr.time().." sec")
 
@@ -50,18 +64,16 @@ srv:listen(80, function(conn)
       file.close()
     end
 
-    reply_template = string.gsub(reply_template, "%[!TITLE!%]", "ESP8266 Webserver")
-    reply_template = string.gsub(reply_template, "%[!HEADER!%]", "ESP8266 Webserver")
+    reply_template = string.gsub(reply_template, "%[!TITLE!%]", "ESP8266-HA")
+    reply_template = string.gsub(reply_template, "%[!HEADER!%]", "ESP8266-HA")
 
     local reply_content = ""
 
-    -- GET /DHT HTTP/1.1 --
-    command = string.sub(req, 6,8) -- Get characters 6 to 8
-    print("URL:"..command)
-    if (command == "DHT") then
-      readDHT()
+    if method == "GET"and path == "/" then
       status_code = "200 OK"
-      reply_content = "<p>Temperature: "..temp.." deg C<br />Humidity: "..humi.."%%</p>"
+      if readDHT() == 1 -- Only return if the DHT is available
+        reply_content = "<p>Temperature: "..temp.." deg C<br />Humidity: "..humi.."%%</p>"
+      end
     else
       status_code = "404 Not Found"
       reply_content = "<p>Page not found</p>"
