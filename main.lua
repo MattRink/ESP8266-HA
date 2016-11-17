@@ -9,7 +9,16 @@ gpio.mode(LED, gpio.OUTPUT)
 
 function updateAPs()
   print("Getting list of APs")
-  wifi.sta.getap(APS)
+
+  wifi.sta.getap({["show_hidden"] = 1}, 1, function (t) 
+    for k, v in pairs(APS) do
+      APS[k] = nil
+    end
+
+    for k, v in pairs(t) do
+      APS[k] = v
+    end
+  end)
 end
 
 function readDHT()
@@ -41,8 +50,15 @@ srv:listen(80, function(conn)
   conn:on("receive", function(sck, req)
     local response = {}
     local status_code = ""
-    print(node.heap())
-    local _, _, method, path, vars = string.find(req, "([A-Z]+) (.+)?(.+) HTTP")
+
+    if req == nil then
+      print("No request")
+      return
+    end
+
+    local _, method, path, vars 
+    _, _, method, path, vars = string.find(req, "([A-Z]+) (.+)?(.+) HTTP")
+
     if method == nil then
       _, _, method, path = string.find(req, "([A-Z]+) (.+) HTTP")
     end
@@ -88,11 +104,28 @@ srv:listen(80, function(conn)
         config_content = file.read()
         file.close()
       end
-      for bssid,v in pairs(t) do
-        local ssid, rssi, authmode, channel = string.match(v, "([^,]+),([^,]+),([^,]+),([^,]*)")
-        wifi_rows = wifi_rows.."<tr><td>"..string.format("%32s",ssid).."</td><td>"..bssid.."</td><td>"..rssi.."</td><td>"..authmode.."</td><td>"..channel.."</td></tr>"
+      for bssid,v in pairs(APS) do
+        print(bssid..": "..v)
+        local ssid, rssi, authmode, channel
+        ssid, rssi, authmode, channel = string.match(v, "([^,]+),([^,]+),([^,]+),([^,]*)")
+
+        if (ssid == nil) then
+          ssid = "&lt;Unknown SSID&gt;"
+          rssi, authmode, channel = string.match(v, ",([^,]+),([^,]+),([^,]*)")
+        end
+
+        local auth_string = ""
+        if authmode == "0" then auth_string = "Open"
+        elseif authmode == "1" then auth_string = "WEP"
+        elseif authmode == "2" then auth_string = "WPA PSK"
+        elseif authmode == "3" then auth_string = "WPA2 PSK"
+        elseif authmode == "4" then auth_string = "WPA+WPA2 PSK"
+        else auth_string = "Unknown" end
+
+        wifi_rows = wifi_rows.."<tr><td><input type=\"radio\" name=\"bssid\" value=\""..bssid.."\"></td><td>"..string.format("%32s",bssid).."</td><td>"..ssid.."</td><td>"..rssi.."</td><td>"..auth_string.."</td><td>"..channel.."</td></tr>"
       end
       config_content = string.gsub(config_content, "%[!APS!%]", wifi_rows)
+      reply_content = reply_content..config_content
     else
       status_code = "404 Not Found"
       reply_content = "<p>Page not found</p>"
@@ -101,7 +134,7 @@ srv:listen(80, function(conn)
     reply_template = string.gsub(reply_template, "%[!INCLUDE!%]", reply_content)
 
     payload_len = string.len(reply_template)
-    print("Response length:"..tostring(payload_len))
+    print("Response length: "..tostring(payload_len))
 
     response[#response]     = "HTTP/1.1 "..status_code.."\r\nContent-Length: "..tostring(payload_len).."\r\nContent-Type: text/html\r\n\r\n"
     response[#response + 1] = reply_template;
